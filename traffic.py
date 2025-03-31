@@ -1,118 +1,68 @@
 import os
-import sys
 import cv2
 import numpy as np
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, save_model
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 
-# Constants
 NUM_CATEGORIES = 43
-IMG_WIDTH = 30
-IMG_HEIGHT = 30
+IMG_SIZE = 30
 
 def load_data(data_dir):
-    """
-    Load image data from directory `data_dir`.
-    
-    Returns tuple (images, labels):
-    - images: List of numpy arrays representing images
-    - labels: List of integers representing categories
-    """
+    """Load PPM images from directory structure"""
     images = []
     labels = []
     
-    # Loop through each category directory (0-42)
-    for category in range(NUM_CATEGORIES):
-        category_dir = os.path.join(data_dir, str(category))
-        
-        # Skip if directory doesn't exist
-        if not os.path.isdir(category_dir):
+    for label in range(NUM_CATEGORIES):
+        dir_path = os.path.join(data_dir, str(label))
+        if not os.path.isdir(dir_path):
             continue
             
-        # Process each image in the category directory
-        for filename in os.listdir(category_dir):
-            # Skip hidden files
-            if filename.startswith('.'):
+        for file in os.listdir(dir_path):
+            if not file.endswith('.ppm'):
                 continue
                 
-            filepath = os.path.join(category_dir, filename)
-            
             try:
-                # Read and resize image
-                img = cv2.imread(filepath)
-                if img is None:
-                    continue
-                    
-                img = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT))
-                
-                # Normalize pixel values
+                img_path = os.path.join(dir_path, file)
+                img = cv2.imread(img_path)
+                img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
                 img = img.astype('float32') / 255.0
-                
                 images.append(img)
-                labels.append(category)
+                labels.append(label)
             except Exception as e:
-                print(f"Error processing {filepath}: {e}", file=sys.stderr)
+                print(f"Error processing {file}: {str(e)}")
     
-    return (np.array(images), np.array(labels))
+    return np.array(images), np.array(labels)
 
-def get_model():
-    """
-    Returns a compiled convolutional neural network model.
-    """
+def build_model():
+    """CNN model architecture"""
     model = Sequential([
-        # First convolutional layer
-        Conv2D(32, (3, 3), activation='relu', input_shape=(IMG_WIDTH, IMG_HEIGHT, 3)),
-        MaxPooling2D(pool_size=(2, 2)),
-        
-        # Second convolutional layer
-        Conv2D(64, (3, 3), activation='relu'),
-        MaxPooling2D(pool_size=(2, 2)),
-        
-        # Flatten and dense layers
+        Conv2D(32, (3,3), activation='relu', input_shape=(IMG_SIZE, IMG_SIZE, 3)),
+        MaxPooling2D((2,2)),
+        Conv2D(64, (3,3), activation='relu'),
+        MaxPooling2D((2,2)),
         Flatten(),
         Dense(128, activation='relu'),
         Dropout(0.5),
-        
-        # Output layer
         Dense(NUM_CATEGORIES, activation='softmax')
     ])
     
-    # Compile model
     model.compile(
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
-    
     return model
 
-def main():
-    # Check command-line arguments
-    if len(sys.argv) not in [2, 3]:
-        sys.exit("Usage: python traffic.py data_directory [model.h5]")
-    
-    # Get image arrays and labels for all image files
-    images, labels = load_data(sys.argv[1])
-    
-    # Split data into training and testing sets
-    split = int(0.9 * len(images))
-    x_train, y_train = images[:split], labels[:split]
-    x_test, y_test = images[split:], labels[split:]
-    
-    # Get a compiled neural network
-    model = get_model()
-    
-    # Fit model on training data
-    model.fit(x_train, y_train, epochs=10)
-    
-    # Evaluate neural network performance
-    model.evaluate(x_test, y_test, verbose=2)
-    
-    # Save model to file
-    if len(sys.argv) == 3:
-        filename = sys.argv[2]
-        model.save(filename)
-        print(f"Model saved to {filename}.")
-
 if __name__ == "__main__":
-    main()
+    print("Loading data...")
+    X, y = load_data("gtsrb")
+    
+    print("Building model...")
+    model = build_model()
+    
+    print("Training...")
+    model.fit(X, y, epochs=10, validation_split=0.2)
+    
+    print("Saving model...")
+    save_model(model, "best_model.h5")
+    print("Training complete! Model saved to best_model.h5")
